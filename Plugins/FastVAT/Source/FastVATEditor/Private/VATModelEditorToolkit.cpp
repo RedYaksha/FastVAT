@@ -29,6 +29,35 @@
 #include "Materials/MaterialInstanceConstant.h"
 #include "Rendering/NaniteResources.h"
 
+
+// helper macros for material manipulation
+#define ConnectMaterialPropertyExpressionToMakeMatAttrDifferentName(Mat, MakeMatAttrsVar, MPName, MatAttrName) \
+	{\
+	FExpressionInput* Input = Mat->GetExpressionInputForProperty(MP_ ## MPName); \
+	if(Input->Expression)\
+	{\
+		Input->Expression->ConnectExpression(&MakeMatAttrsVar->MatAttrName, Input->OutputIndex);\
+	}\
+	}\
+	
+#define ConnectMaterialPropertyExpressionToMakeMatAttrCustomUV(Mat, MakeMatAttrsVar, UVIndex) \
+	{\
+	FExpressionInput* Input = Mat->GetExpressionInputForProperty(MP_ ## CustomizedUVs ## UVIndex); \
+	if(Input->Expression)\
+	{\
+		Input->Expression->ConnectExpression(&MakeMatAttrsVar->CustomizedUVs[UVIndex], Input->OutputIndex);\
+	}\
+	}\
+	
+#define ConnectMaterialPropertyExpressionToMakeMatAttr(Mat, MakeMatAttrsVar, Name) \
+	{\
+	FExpressionInput* Input = Mat->GetExpressionInputForProperty(MP_ ## Name); \
+	if(Input->Expression)\
+	{\
+		Input->Expression->ConnectExpression(&MakeMatAttrsVar->Name, Input->OutputIndex);\
+	}\
+	}\
+	
 #define LOCTEXT_NAMESPACE "VATModelEditor"
 
 void FVATModelEditorToolkit::InitEditor(const TArray<UObject*>& InObjects)
@@ -1436,8 +1465,8 @@ void FVATModelEditorToolkit::ExecuteGenerateVAT()
 	check(!UEditorAssetLibrary::DoesDirectoryExist(OutDirectoryPath))
 	
 	UEditorAssetLibrary::MakeDirectory(OutDirectoryPath);
-	
 
+	// Creates the textures that will hold the bone/vertex interpolation data for the animations
 	CreateTextures();
 
 	// TODO: choose which SKM LODs to use, and support > 1 LOD
@@ -1445,9 +1474,7 @@ void FVATModelEditorToolkit::ExecuteGenerateVAT()
 	// create static mesh from source skeletal mesh
 	FString SMPath = FPaths::Combine(OutDirectoryPath, "SM_VAT_" + VATModel.GetName());
 
-	
 	UStaticMesh* NewStaticMesh = ConvertSkeletalMeshToStaticMesh(VATModel->SkeletalMesh, SMPath, VATModel->LODRange);
-	
 
 	// Setup LOD Material Slots
 	int NumLODs = NewStaticMesh->GetNumLODs();
@@ -1502,8 +1529,6 @@ void FVATModelEditorToolkit::ExecuteGenerateVAT()
 	TMap<FString, UMaterialInstanceConstant*> SourceMatInstances;
 
 	// All materials that are UMaterial* (not instances), must be converted to instances first.
-	
-
 	int MaxIter = 500;
 	int CurIter = 0;
 
@@ -1515,11 +1540,9 @@ void FVATModelEditorToolkit::ExecuteGenerateVAT()
 			UE_LOG(LogTemp, Log, TEXT("Exceeded max iter."))
 			break;
 		}
-
 		
 		UMaterialInterface* M;
 		StaticMaterialsQueue.Dequeue(M);
-
 
 		// TODO: handle, duplicate asset names...
 		if(MaterialsCreated.Contains(M->GetFullName()))
@@ -1546,7 +1569,8 @@ void FVATModelEditorToolkit::ExecuteGenerateVAT()
 				// /Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions02/Utility/BlendAngleCorrectedNormals.BlendAngleCorrectedNormals'
 				auto* BlendAngleCorrectedNormals = CreateMaterialExpression<UMaterialExpressionMaterialFunctionCall>(CopiedMat, 550, 0);
 				check(BlendAngleCorrectedNormals);
-				
+
+				// TODO: perform a check for this asset before we begin
 				UMaterialFunctionInterface* MatFunc = LoadObject<UMaterialFunctionInterface>(nullptr,
 					TEXT("/Engine/Functions/Engine_MaterialFunctions02/Utility/BlendAngleCorrectedNormals.BlendAngleCorrectedNormals"));
 				check(MatFunc);
@@ -1630,33 +1654,6 @@ void FVATModelEditorToolkit::ExecuteGenerateVAT()
 
 					// connect make mat to first get mat attrs
 					MakeMatAttrs->ConnectExpression(GetMatAttrs->GetInput(0), 0);
-
-#define ConnectMaterialPropertyExpressionToMakeMatAttrDifferentName(Mat, MakeMatAttrsVar, MPName, MatAttrName) \
-	{\
-	FExpressionInput* Input = Mat->GetExpressionInputForProperty(MP_ ## MPName); \
-	if(Input->Expression)\
-	{\
-		Input->Expression->ConnectExpression(&MakeMatAttrsVar->MatAttrName, Input->OutputIndex);\
-	}\
-	}\
-	
-#define ConnectMaterialPropertyExpressionToMakeMatAttrCustomUV(Mat, MakeMatAttrsVar, UVIndex) \
-	{\
-	FExpressionInput* Input = Mat->GetExpressionInputForProperty(MP_ ## CustomizedUVs ## UVIndex); \
-	if(Input->Expression)\
-	{\
-		Input->Expression->ConnectExpression(&MakeMatAttrsVar->CustomizedUVs[UVIndex], Input->OutputIndex);\
-	}\
-	}\
-	
-#define ConnectMaterialPropertyExpressionToMakeMatAttr(Mat, MakeMatAttrsVar, Name) \
-	{\
-	FExpressionInput* Input = Mat->GetExpressionInputForProperty(MP_ ## Name); \
-	if(Input->Expression)\
-	{\
-		Input->Expression->ConnectExpression(&MakeMatAttrsVar->Name, Input->OutputIndex);\
-	}\
-	}\
 	
 					ConnectMaterialPropertyExpressionToMakeMatAttrDifferentName(CopiedMat, MakeMatAttrs, CustomData0, ClearCoat)
 					ConnectMaterialPropertyExpressionToMakeMatAttrDifferentName(CopiedMat, MakeMatAttrs, CustomData1, ClearCoatRoughness)
@@ -1973,3 +1970,7 @@ T* FVATModelEditorToolkit::CreateMaterialExpression(UMaterial* Material, int32 N
 }
 
 #undef LOCTEXT_NAMESPACE
+
+#undef ConnectMaterialPropertyExpressionToMakeMatAttrCustomUV
+#undef ConnectMaterialPropertyExpressionToMakeMatAttrDifferentName
+#undef ConnectMaterialPropertyExpressionToMakeMatAttr
